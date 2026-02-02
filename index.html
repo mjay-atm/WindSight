@@ -6,52 +6,184 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Add Turf.js for geometry operations -->
+    <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
     <style>
         body { margin: 0; padding: 0; }
         #map { height: 100vh; width: 100%; }
         .station-label { font-weight: bold; }
+        .leaflet-control-layers-overlays label { display: block; }
+        
+        /* Custom Label Style */
+        .town-label {
+            background: rgba(255, 255, 255, 0.7);
+            border: 0;
+            border-radius: 4px;
+            box-shadow: none;
+            font-size: 14px; /* Increased font size */
+            font-weight: bold;
+            color: #333;
+            text-shadow: 1px 1px 2px white;
+            padding: 2px 5px;
+            white-space: nowrap;
+        }
+        .town-label-marker {
+            background: none;
+            border: none;
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <script>
-        // Initialize Map centered on Taoyuan
+        // Initialize Map
+        // We will set view later using fitBounds, but need an initial state
         var map = L.map('map').setView([24.95, 121.20], 11);
 
-        // Add OpenStreetMap Base Layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // Base Layers
+        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Add NLSC Town Boundaries WMS Layer
-        var townWMS = L.tileLayer.wms('https://wms.nlsc.gov.tw/wms', {
-            layers: 'TOWN',
-            format: 'image/png',
-            transparent: true,
-            version: '1.1.1',
-            attribution: '國土測繪中心'
+        var emptyLayer = L.tileLayer('', {
+            attribution: ''
+        });
+
+        // Overlay Layers
+        var townLayer = L.geoJSON(null, {
+            style: function(feature) {
+                return {
+                    color: '#666',
+                    weight: 1,
+                    fill: false, // Transparent fill for now, but we can add hover effects later
+                    dashArray: '5, 5' // Dashed line for districts
+                };
+            },
+            onEachFeature: function(feature, layer) {
+                // Add Labels Logic Here to sync with layer loading
+                var townName = feature.properties.TOWNNAME;
+                var shortName = townName.replace(/[鄉鎮市區]$/, "");
+                
+                var center = layer.getBounds().getCenter();
+                
+                var labelIcon = L.divIcon({
+                    className: 'town-label-marker',
+                    html: `<div class="town-label">${shortName}</div>`,
+                    iconSize: [40, 20],
+                    iconAnchor: [20, 10]
+                });
+
+                L.marker(center, { icon: labelIcon, interactive: false }).addTo(labelsLayer);
+            }
         }).addTo(map);
 
-        // Load Taoyuan Stations Data from JSON file
+        var stationsLayer = L.layerGroup().addTo(map);
+        var maskLayer = L.layerGroup().addTo(map); // Default On
+        var labelsLayer = L.layerGroup().addTo(map); // For Town Labels
+
+        // Layer Control
+        var baseMaps = {
+            "OpenStreetMap": osmLayer,
+            "無地圖 (White)": emptyLayer
+        };
+
+        var overlayMaps = {
+            "鄉鎮市區界線": townLayer,
+            "鄉鎮市區標籤": labelsLayer,
+            "地面測站": stationsLayer,
+            "僅桃園 (Focus Mode)": maskLayer
+        };
+
+        L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+
+        // Load Taoyuan Stations Data
         fetch('data/taoyuan_stations.json')
             .then(response => response.json())
             .then(stations => {
-                // Add Station Markers
                 stations.forEach(function(station) {
-                    var marker = L.marker([station.Latitude, station.Longitude]).addTo(map);
+                    var marker = L.marker([station.Latitude, station.Longitude]);
                     
                     var popupContent = `
                         <b>${station.StationName} (${station.StationID})</b><br>
                         高度: ${station.Altitude_m} m<br>
                         地址: ${station.Address}<br>
-                        <i>${station.Notes}</i>
+                        ${station.Notes ? `<br><i style="color: red;">備註：${station.Notes}</i>` : ''}
                     `;
                     
                     marker.bindPopup(popupContent);
                     marker.bindTooltip(station.StationName, {direction: 'top', offset: [0, -20]});
+                    marker.addTo(stationsLayer);
                 });
             })
             .catch(error => console.error('Error loading station data:', error));
+
+        // Load Town/District GeoJSON from local converted file
+        // Use this for Town Boundaries, Labels, AND creating the City Mask
+        fetch('data/taoyuan_towns_moi.json')
+            .then(res => res.json())
+            .then(townData => {
+                // A. Add Towns to Town Layer
+                townLayer.addData(townData); // This adds dashes and labels logic
+
+                // B. Create City Mask using Turf.js to dissolve towns
+                // Merge all towns into one "Taoyuan City" polygon
+                try {
+                    var dissolved = turf.dissolve(townData);
+                    var taoyuanFeature = dissolved.features[0]; // Should be one feature after dissolve
+
+                    if (taoyuanFeature) {
+                        // B-1. Prepare Mask Geometry (World minus Taoyuan)
+                        var worldLatLngs = [
+                            [90, -180],
+                            [90, 180],
+                            [-90, 180],
+                            [-90, -180]
+                        ];
+
+                        var taoyuanLatLngs = [];
+                        
+                        // Helpers to flip coords [lng, lat] -> [lat, lng] for Leaflet
+                        function flipCoords(ring) {
+                            return ring.map(coord => [coord[1], coord[0]]);
+                        }
+
+                        if (taoyuanFeature.geometry.type === 'Polygon') {
+                            taoyuanLatLngs.push(flipCoords(taoyuanFeature.geometry.coordinates[0]));
+                        } else if (taoyuanFeature.geometry.type === 'MultiPolygon') {
+                            taoyuanFeature.geometry.coordinates.forEach(poly => {
+                                taoyuanLatLngs.push(flipCoords(poly[0]));
+                            });
+                        }
+
+                        // Create Mask Polygon (White background with a hole)
+                        var mask = L.polygon([worldLatLngs, ...taoyuanLatLngs], {
+                            color: 'transparent',
+                            fillColor: '#ffffff',
+                            fillOpacity: 1,
+                            interactive: false 
+                        }).addTo(maskLayer);
+
+                        // B-2. Create Thick Black Border for Taoyuan City
+                        // This draws the merged outline on top
+                        L.geoJSON(taoyuanFeature, {
+                            style: {
+                                color: 'black',
+                                weight: 3,
+                                fill: false,
+                                interactive: false
+                            }
+                        }).addTo(maskLayer);
+
+                        // Map Bounds - fit to the city
+                        var bounds = L.geoJSON(taoyuanFeature).getBounds();
+                        map.fitBounds(bounds);
+                    }
+                } catch (e) {
+                    console.error("Turf.js operation failed:", e);
+                }
+            })
+            .catch(err => console.error("Error loading local town geojson:", err));
 
     </script>
 </body>
