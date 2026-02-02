@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Taoyuan CWA Stations & District Boundaries</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100%; }
+        .station-label { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script>
+        // Initialize Map centered on Taoyuan
+        var map = L.map('map').setView([24.95, 121.20], 11);
+
+        // Add OpenStreetMap Base Layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Add NLSC Town Boundaries WMS Layer
+        var townWMS = L.tileLayer.wms('https://wms.nlsc.gov.tw/wms', {
+            layers: 'TOWN',
+            format: 'image/png',
+            transparent: true,
+            version: '1.1.1',
+            attribution: '國土測繪中心'
+        }).addTo(map);
+
+        // Load Taoyuan Stations Data from JSON file
+        fetch('data/taoyuan_stations.json')
+            .then(response => response.json())
+            .then(stations => {
+                // Add Station Markers
+                stations.forEach(function(station) {
+                    var marker = L.marker([station.Latitude, station.Longitude]).addTo(map);
+                    
+                    var popupContent = `
+                        <b>${station.StationName} (${station.StationID})</b><br>
+                        高度: ${station.Altitude_m} m<br>
+                        地址: ${station.Address}<br>
+                        <i>${station.Notes}</i>
+                    `;
+                    
+                    marker.bindPopup(popupContent);
+                    marker.bindTooltip(station.StationName, {direction: 'top', offset: [0, -20]});
+                });
+            })
+            .catch(error => console.error('Error loading station data:', error));
+
+    </script>
+</body>
+</html>
