@@ -89,6 +89,45 @@ class HistoryDataManager {
         this.loadedDates.add(dateStr);
     }
 
+    getStationTimeSeries(dateStr, stationId) {
+        const slots = this.generateTimeSlots(dateStr);
+        const labels = [];
+        const windSpeeds = [];
+        const gusts = [];
+        
+        slots.forEach(slot => {
+            // Parse time from key (e.g., 20260205_0010 -> 00:10)
+            const timePart = slot.key.split('_')[1];
+            const displayTime = `${timePart.substring(0,2)}:${timePart.substring(2,4)}`;
+            labels.push(displayTime);
+            
+            const data = this.cache[slot.key];
+            let found = false;
+            
+            if (data) {
+                // Determine if data is array or object with data property
+                const list = Array.isArray(data) ? data : (data.data || []);
+                const stationData = list.find(s => s['站號'] === stationId);
+                
+                if (stationData) {
+                    const ws = parseFloat(stationData['平均風(m/s)']);
+                    const gs = parseFloat(stationData['陣風(m/s)']);
+                    
+                    windSpeeds.push(isNaN(ws) ? null : ws);
+                    gusts.push(isNaN(gs) ? null : gs);
+                    found = true;
+                }
+            }
+            
+            if (!found) {
+                windSpeeds.push(null);
+                gusts.push(null);
+            }
+        });
+        
+        return { labels, windSpeeds, gusts };
+    }
+
     /**
      * Retrieve data synchronously from cache
      * @param {string} dateStr - "YYYY-MM-DD"
@@ -433,6 +472,7 @@ function initStations(stations) {
             地址: ${station.Address}<br>
             <hr><i style="color:gray">等待資料...</i>
             ${station.Notes ? `<br><i style="color: red;">備註：${station.Notes}</i>` : ''}
+            <div class="chart-container"><canvas id="chart-${station.StationID}"></canvas></div>
         `;
 
         marker.bindPopup(popupContent);
@@ -567,6 +607,7 @@ function updateStationData(incomingData) {
             地址: ${station.Address}<br>
             ${weatherHtml}
             ${station.Notes ? `<br><i style="color: red;">備註：${station.Notes}</i>` : ''}
+            <div class="chart-container"><canvas id="chart-${station.StationID}"></canvas></div>
         `;
 
         marker.setPopupContent(popupContent);
@@ -772,3 +813,98 @@ fetch('data/taoyuan_towns_moi.json')
         }
     })
     .catch(err => console.error("Error loading local town geojson:", err));
+// --- Chart Integration ---
+map.on('popupopen', function(e) {
+    // Only available in History Mode
+    if (isRealtime) {
+        const container = e.popup.getElement().querySelector('.chart-container');
+        if (container) container.style.display = 'none';
+        return;
+    }
+
+    const marker = e.popup._source;
+    if (!marker || !marker.stationData) return;
+
+    const stationId = marker.stationData.StationID;
+    const canvas = document.getElementById(`chart-${stationId}`);
+    
+    if (!canvas) return;
+
+    // Use current history date
+    const dateStr = currentHistoryDate; 
+    const data = historyManager.getStationTimeSeries(dateStr, stationId);
+
+    // Destroy existing chart if any
+    if (marker.chartInstance) {
+        marker.chartInstance.destroy();
+        marker.chartInstance = null;
+    }
+
+    // Render Chart
+    marker.chartInstance = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [
+                {
+                    label: '平均風速',
+                    data: data.windSpeeds,
+                    borderColor: '#0078a8',
+                    backgroundColor: 'rgba(0, 120, 168, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.1,
+                    fill: false
+                },
+                {
+                    label: '陣風',
+                    data: data.gusts,
+                    borderColor: '#e31a1c',
+                    backgroundColor: 'rgba(227, 26, 28, 0.1)',
+                    borderWidth: 1,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.1,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                x: {
+                    ticks: {
+                        maxTicksLimit: 6,
+                        maxRotation: 0,
+                        font: { size: 10 }
+                    },
+                    grid: { display: false }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'm/s', font: { size: 10 } },
+                    ticks: { font: { size: 10 } }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            }
+        }
+    });
+});
