@@ -1,18 +1,331 @@
 // Initialize Map
 const map = L.map('map').setView([24.95, 121.20], 11);
 
+// --- History Data Manager ---
+class HistoryDataManager {
+    constructor() {
+        this.cache = {}; // Key: "YYYYMMDD_HHmm", Value: Data Array or null
+        this.loadedDates = new Set(); // Tracks fully loaded dates (YYYY-MM-DD)
+    }
+
+    /**
+     * Helper to format numbers with leading zero
+     */
+    pad(num) {
+        return num.toString().padStart(2, '0');
+    }
+
+    /**
+     * Generate list of time slots and URLs for a given date
+     * @param {string} dateStr - Date string "YYYY-MM-DD"
+     */
+    generateTimeSlots(dateStr) {
+        const cleanDate = dateStr.replace(/-/g, ''); // YYYYMMDD
+        const slots = [];
+        
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 10) {
+                const timeStr = `${this.pad(h)}${this.pad(m)}`;
+                const key = `${cleanDate}_${timeStr}`;
+                slots.push({
+                    key: key,
+                    url: `history/${key}.json`
+                });
+            }
+        }
+        return slots;
+    }
+
+    /**
+     * Load all data for a specific date in batches
+     * @param {string} dateStr - "YYYY-MM-DD"
+     * @param {function} onProgress - Callback (percentage)
+     */
+    async loadDate(dateStr, onProgress) {
+        if (this.loadedDates.has(dateStr)) {
+            if (onProgress) onProgress(100);
+            return;
+        }
+
+        const slots = this.generateTimeSlots(dateStr);
+        const total = slots.length;
+        const batchSize = 12; // Fetch 12 files at a time
+        
+        // Filter slots that are not in cache (though likely all will be needed if date not loaded)
+        const pendingSlots = slots.filter(s => this.cache[s.key] === undefined);
+        let completed = slots.length - pendingSlots.length; // Count already cached
+
+        for (let i = 0; i < pendingSlots.length; i += batchSize) {
+            const batch = pendingSlots.slice(i, i + batchSize);
+            
+            await Promise.all(batch.map(slot => 
+                fetch(slot.url)
+                    .then(response => {
+                        if (!response.ok) throw new Error(response.statusText);
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Validate data structure if needed, or assume array/object
+                        this.cache[slot.key] = data;
+                    })
+                    .catch(e => {
+                        // Graceful failure: store null so we don't retry endlessly
+                        // console.warn(`Missing data for ${slot.key}:`, e);
+                        this.cache[slot.key] = null;
+                    })
+            ));
+
+            completed += batch.length;
+            if (onProgress) {
+                const percent = Math.round((completed / total) * 100);
+                onProgress(percent);
+            }
+            
+            // Optional: Small delay to yield to UI thread if needed
+            // await new Promise(r => setTimeout(r, 10));
+        }
+
+        this.loadedDates.add(dateStr);
+    }
+
+    /**
+     * Retrieve data synchronously from cache
+     * @param {string} dateStr - "YYYY-MM-DD"
+     * @param {string} timeStr - "HHmm"
+     * @returns {Array|null} Weather data array or null
+     */
+    getDataAtTime(dateStr, timeStr) {
+        const cleanDate = dateStr.replace(/-/g, '');
+        const key = `${cleanDate}_${timeStr}`;
+        return this.cache[key] || null;
+    }
+}
+
 // Info Control (Bottom Left)
 const infoControl = L.control({ position: 'bottomleft' });
+
+// Global State
+let isRealtime = true;
+let realtimeData = [];
+let realtimeTimeStr = "未知";
+let historyManager = new HistoryDataManager();
+let playbackInterval = null;
+let isPlaying = false;
+let currentHistoryDate = new Date().toISOString().split('T')[0];
+let currentHistoryTimeIndex = 0; // 0 (00:00) to 143 (23:50)
+
+// Helper: Convert Index to Time String (HHmm) and Display (HH:mm)
+function indexToTimeStr(index) {
+    const totalMin = index * 10;
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return `${h.toString().padStart(2, '0')}${m.toString().padStart(2, '0')}`;
+}
+
+function indexToDisplayTime(index) {
+    const totalMin = index * 10;
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+}
+
 infoControl.onAdd = function(map) {
     this._div = L.DomUtil.create('div', 'info-control');
     this._div.style.padding = '6px 8px';
     this._div.style.background = 'white';
     this._div.style.boxShadow = '0 0 15px rgba(0,0,0,0.2)';
     this._div.style.borderRadius = '5px';
-    this._div.innerHTML = '<h4>載入中...</h4>';
+    
+    // Initial HTML Structure
+    this._div.innerHTML = `
+        <div class="control-header">
+            <b>資料來源</b>
+            <div>
+                <span id="btn-realtime" class="mode-btn active" onclick="setRealtimeMode()">即時</span>
+                <span id="btn-history" class="mode-btn" onclick="setHistoryMode()">歷史</span>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div id="info-content">
+            <div style="font-size: 12px; line-height: 1.4;">
+                <h4 style="margin: 0;">載入中...</h4>
+            </div>
+        </div>
+
+        <!-- History Controls (Hidden by default) -->
+        <div id="history-controls" class="history-controls" style="display: none;">
+            <div class="control-row">
+                <input type="date" id="history-date" class="date-input" value="${currentHistoryDate}">
+            </div>
+            <div class="control-row">
+                <button id="play-btn" class="play-btn" onclick="togglePlay()">&#9654;</button> <!-- Play Icon -->
+                <input type="range" id="time-slider" class="time-slider" min="0" max="143" value="0" step="1" oninput="handleSliderChange(this.value)">
+                <span id="time-display" class="time-display">00:00</span>
+            </div>
+            <div id="progress-container" style="display:none;">
+                <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+                <div id="loading-text" class="loading-text">載入資料中... 0%</div>
+            </div>
+        </div>
+    `;
+    
+    // Prevent Map Click propagation
+    L.DomEvent.disableClickPropagation(this._div);
+
     return this._div;
 };
 infoControl.addTo(map);
+
+// --- UI Interaction Functions ---
+window.setRealtimeMode = function() {
+    if (isRealtime) return;
+    isRealtime = true;
+    
+    // Update UI
+    document.getElementById('btn-realtime').classList.add('active');
+    document.getElementById('btn-history').classList.remove('active');
+    document.getElementById('history-controls').style.display = 'none';
+    
+    // Stop Playback
+    stopPlayback();
+
+    // Restore Realtime Data
+    updateInfoContent(realtimeTimeStr, "CWA QPEPlus");
+    updateStationData(realtimeData);
+};
+
+window.setHistoryMode = function() {
+    if (!isRealtime) return;
+    isRealtime = false;
+
+    // Update UI
+    document.getElementById('btn-realtime').classList.remove('active');
+    document.getElementById('btn-history').classList.add('active');
+    document.getElementById('history-controls').style.display = 'block';
+
+    // Check Data
+    const dateInput = document.getElementById('history-date');
+    if (dateInput) {
+        currentHistoryDate = dateInput.value;
+        loadHistoryDate(currentHistoryDate);
+    }
+};
+
+window.togglePlay = function() {
+    if (isPlaying) {
+        stopPlayback();
+    } else {
+        startPlayback();
+    }
+};
+
+window.handleSliderChange = function(val) {
+    currentHistoryTimeIndex = parseInt(val);
+    updateHistoryView();
+};
+
+// Add Event Listener to Date Input dynamically
+setTimeout(() => {
+    const dateInput = document.getElementById('history-date');
+    if (dateInput) {
+        dateInput.addEventListener('change', (e) => {
+            currentHistoryDate = e.target.value;
+            loadHistoryDate(currentHistoryDate);
+        });
+    }
+}, 1000); // Slight delay to ensure DOM is ready
+
+function startPlayback() {
+    if (isPlaying) return;
+    isPlaying = true;
+    document.getElementById('play-btn').innerHTML = '&#10074;&#10074;'; // Pause Icon
+    
+    playbackInterval = setInterval(() => {
+        if (currentHistoryTimeIndex >= 143) {
+            currentHistoryTimeIndex = 0; // Loop back to start
+        } else {
+            currentHistoryTimeIndex++;
+        }
+        
+        // Update Slider UI
+        document.getElementById('time-slider').value = currentHistoryTimeIndex;
+        updateHistoryView();
+    }, 1000); // 1 Second per frame
+}
+
+function stopPlayback() {
+    isPlaying = false;
+    document.getElementById('play-btn').innerHTML = '&#9654;'; // Play Icon
+    if (playbackInterval) {
+        clearInterval(playbackInterval);
+        playbackInterval = null;
+    }
+}
+
+function updateInfoContent(timeStr, source) {
+    const content = document.getElementById('info-content');
+    if (content) {
+        content.innerHTML = `
+            <div style="font-size: 12px; line-height: 1.4;">
+                <b>資料時間:</b> ${timeStr}<br>
+                <b>資料來源:</b> ${source}
+            </div>
+        `;
+    }
+}
+
+function loadHistoryDate(dateStr) {
+    // Show Loading
+    document.getElementById('progress-container').style.display = 'block';
+    
+    // Disable controls
+    document.getElementById('time-slider').disabled = true;
+    document.getElementById('play-btn').disabled = true;
+
+    historyManager.loadDate(dateStr, (percent) => {
+        const fill = document.getElementById('progress-fill');
+        const text = document.getElementById('loading-text');
+        if (fill) fill.style.width = `${percent}%`;
+        if (text) {
+            text.style.display = 'block';
+            text.innerText = `載入資料中... ${percent}%`;
+        }
+        
+        if (percent >= 100) {
+            setTimeout(() => {
+                document.getElementById('progress-container').style.display = 'none';
+                document.getElementById('time-slider').disabled = false;
+                document.getElementById('play-btn').disabled = false;
+                
+                // Refresh View
+                updateHistoryView();
+            }, 500);
+        }
+    });
+}
+
+function updateHistoryView() {
+    const timeStr = indexToTimeStr(currentHistoryTimeIndex);
+    const displayTime = indexToDisplayTime(currentHistoryTimeIndex);
+    
+    // Update Time Display
+    document.getElementById('time-display').innerText = displayTime;
+    
+    // Fetch Data from Cache
+    const data = historyManager.getDataAtTime(currentHistoryDate, timeStr);
+    
+    if (data) {
+        updateStationData(data);
+        updateInfoContent(`${currentHistoryDate} ${displayTime}`, "歷史資料");
+    } else {
+        // Show No Data or hold previous?
+        // updateStationData([]); // Clear map? Or just show empty?
+        // Let's keep markers but show "No Data" content if array is empty
+        updateInfoContent(`${currentHistoryDate} ${displayTime}`, `<span style="color:red">無資料</span>`);
+    }
+}
+
 
 // Base Layers
 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -27,6 +340,7 @@ const emptyLayer = L.tileLayer('', {
 const stationsLayer = L.layerGroup().addTo(map);
 const maskLayer = L.layerGroup().addTo(map); // Default On
 const labelsLayer = L.layerGroup().addTo(map); // For Town Labels
+const stationMarkers = {};
 
 // Town Layer (Lines)
 const townLayer = L.geoJSON(null, {
@@ -90,62 +404,82 @@ function getWindDirection16(d) {
     return directions[index];
 }
 
-// --- Data Loading ---
-Promise.all([
-    fetch('data/taoyuan_stations.json').then(r => r.json()),
-    fetch('taoyuan_realtime_weather.json').then(r => r.json()).catch(e => {
-        console.warn("Realtime weather data not found or invalid", e);
-        return [];
-    })
-]).then(([stations, weatherResponse]) => {
+function initStations(stations) {
+    stations.forEach(function(station) {
+        // Default No Data Icon
+        const icon = L.divIcon({
+            className: 'no-data-icon',
+            html: `<div style="
+                 color: red; 
+                 font-size: 26px; 
+                 font-weight: bold; 
+                 line-height: 26px;
+                ">&#10006;</div>`,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+        });
 
-    let weatherData = [];
-    let dataTime = "時間未存 (請更新資料)";
+        const marker = L.marker([station.Latitude, station.Longitude], {
+            icon: icon
+        });
+        
+        // Store static data for updates
+        marker.stationData = station;
 
-    if (Array.isArray(weatherResponse)) {
-        weatherData = weatherResponse;
-        if (weatherData.length > 0 && weatherData[0]['陣風時間(HH:MM)']) {
-            dataTime = "今日 " + weatherData[0]['陣風時間(HH:MM)'] + " (僅時間)";
-        }
-    } else if (weatherResponse && weatherResponse.data) {
-        weatherData = weatherResponse.data;
-        dataTime = weatherResponse.updated_at || "未知";
+        // Initial Popup (Static info)
+        const popupContent = `
+            <b>${station.StationName} (${station.StationID})</b><br>
+            經度: ${station.Longitude} °E<br>
+            緯度: ${station.Latitude} °N<br>
+            高度: ${station.Altitude_m} m<br>
+            地址: ${station.Address}<br>
+            <hr><i style="color:gray">等待資料...</i>
+            ${station.Notes ? `<br><i style="color: red;">備註：${station.Notes}</i>` : ''}
+        `;
+
+        marker.bindPopup(popupContent);
+        marker.bindTooltip(station.StationName + " (無資料)", {
+            direction: 'top',
+            offset: [0, -20]
+        });
+        
+        marker.addTo(stationsLayer);
+        stationMarkers[station.StationID] = marker;
+    });
+}
+
+function updateStationData(incomingData) {
+    let weatherData = incomingData;
+    // Handle wrapped data structure (e.g. { data: [...] })
+    if (!Array.isArray(incomingData) && incomingData && incomingData.data && Array.isArray(incomingData.data)) {
+        weatherData = incomingData.data;
     }
 
-    // Lookup Map
+    // Ensure we have an array
+    if (!Array.isArray(weatherData)) {
+        console.warn("updateStationData: Invalid data format", incomingData);
+        return;
+    }
+
+    // Lookup Map for incoming data
     const weatherMap = {};
     weatherData.forEach(w => {
         weatherMap[w['站號']] = w;
     });
 
-    // Update Info Control
-    const infoDiv = document.querySelector('.info-control');
-    if (weatherData.length > 0) {
-        infoDiv.innerHTML = `
-            <div style="font-size: 12px; line-height: 1.4;">
-                <b>資料時間:</b> ${dataTime}<br>
-                <b>資料來源:</b> CWA QPEPlus
-            </div>
-         `;
-    } else {
-        infoDiv.innerHTML = `
-            <div style="font-size: 12px; line-height: 1.4;">
-                <b>資料來源:</b> CWA QPEPlus<br>
-                <span style="color:red">無法載入即時資料</span>
-            </div>
-         `;
-    }
-
-    // Render Stations
-    stations.forEach(function(station) {
-        const w = weatherMap[station.StationID] || {};
+    // Iterate over all initialized markers
+    Object.keys(stationMarkers).forEach(stationID => {
+        const marker = stationMarkers[stationID];
+        const station = marker.stationData;
+        const w = weatherMap[stationID] || {};
+        
         let icon;
         let tooltipText = station.StationName;
 
         const speed = parseFloat(w['平均風(m/s)']);
         const direction = parseFloat(w['風向(degree)']);
 
-        if (w && !isNaN(speed) && !isNaN(direction) && direction >= 0 && direction <= 360) {
+        if (w['站號'] && !isNaN(speed) && !isNaN(direction) && direction >= 0 && direction <= 360) {
             // Calm Wind
             if (speed <= 0.2) {
                 icon = L.divIcon({
@@ -202,9 +536,7 @@ Promise.all([
             tooltipText += ` (無風力資料)`;
         }
 
-        const marker = L.marker([station.Latitude, station.Longitude], {
-            icon: icon
-        });
+        marker.setIcon(icon);
 
         // Popup Content
         let weatherHtml = "";
@@ -231,13 +563,44 @@ Promise.all([
             ${station.Notes ? `<br><i style="color: red;">備註：${station.Notes}</i>` : ''}
         `;
 
-        marker.bindPopup(popupContent);
-        marker.bindTooltip(tooltipText, {
-            direction: 'top',
-            offset: [0, -20]
-        });
-        marker.addTo(stationsLayer);
+        marker.setPopupContent(popupContent);
+        marker.setTooltipContent(tooltipText);
     });
+}
+
+// --- Data Loading ---
+Promise.all([
+    fetch('data/taoyuan_stations.json').then(r => r.json()),
+    fetch('taoyuan_realtime_weather.json').then(r => r.json()).catch(e => {
+        console.warn("Realtime weather data not found or invalid", e);
+        return [];
+    })
+]).then(([stations, weatherResponse]) => {
+
+    initStations(stations);
+
+    let weatherData = [];
+    let dataTime = "時間未存 (請更新資料)";
+
+    if (Array.isArray(weatherResponse)) {
+        weatherData = weatherResponse;
+        if (weatherData.length > 0 && weatherData[0]['陣風時間(HH:MM)']) {
+            dataTime = "今日 " + weatherData[0]['陣風時間(HH:MM)'] + " (僅時間)";
+        }
+    } else if (weatherResponse && weatherResponse.data) {
+        weatherData = weatherResponse.data;
+        dataTime = weatherResponse.updated_at || "未知";
+    }
+    
+    // Store Realtime State
+    realtimeData = weatherData;
+    realtimeTimeStr = dataTime;
+
+    // Update Info Control Content via Helper
+    updateInfoContent(realtimeTimeStr, "CWA QPEPlus");
+
+    // Initial Render
+    updateStationData(weatherData);
 
     // Valid Legend Control
     const legend = L.control({ position: 'bottomleft' });
