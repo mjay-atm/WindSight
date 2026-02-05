@@ -174,3 +174,244 @@ body { margin: 0; padding: 0; }
     margin-top: 2px;
     display: none;
 }
+
+/* --- Mobile Responsive & Touch Styles --- */
+
+/* Base Styles (previously inline) */
+.info-control, .legend {
+    background: white;
+    padding: 6px 8px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    border-radius: 5px;
+}
+
+/* Legend Toggle (Hidden on Desktop) */
+.legend-toggle, .legend-close, .legend-header-mobile {
+    display: none;
+}
+.legend-header-desktop {
+    display: block;
+    margin: 0 0 5px;
+    font-size: 14px;
+}
+
+/* Mobile Breakpoint */
+@media (max-width: 768px) {
+    /* 1. Reset Leaflet Control Position for Info Control */
+    .leaflet-bottom.leaflet-left .info-control {
+        margin: 0;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 90%;
+        max-width: 400px;
+        z-index: 1000;
+        font-size: 1rem;
+        padding: 12px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    }
+    
+    /* 2. Legend: Floating Button & Overlay */
+    .leaflet-bottom.leaflet-left .legend {
+        background: none;
+        box-shadow: none;
+        padding: 0;
+        margin: 0;
+        position: fixed;
+        bottom: 160px; /* Above the info control card */
+        right: 15px; /* Use Right side */
+        left: auto;
+        pointer-events: none; /* Let clicks pass through transparent container */
+    }
+
+    /* Toggle Button (Visible on Mobile) */
+    .legend-toggle {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 44px;
+        height: 44px;
+        background: white;
+        border-radius: 50%;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        font-weight: bold;
+        font-family: "Times New Roman", serif;
+        font-style: italic;
+        font-size: 24px;
+        cursor: pointer;
+        pointer-events: auto; /* Enable click on button */
+        color: #0078a8;
+    }
+
+    /* Legend Content (Hidden by default, centered overlay when shown) */
+    .legend-content {
+        display: none; 
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        width: 85%;
+        max-width: 320px;
+        z-index: 2000;
+        max-height: 70vh;
+        overflow-y: auto;
+        pointer-events: auto;
+    }
+
+    .legend.expanded .legend-content {
+        display: block;
+    }
+
+    /* Headers */
+    .legend-header-desktop { display: none; }
+    
+    .legend-header-mobile {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 8px;
+    }
+    .legend-header-mobile h4 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+
+    /* Close Button */
+    .legend-close {
+        display: block;
+        font-size: 28px;
+        line-height: 20px;
+        cursor: pointer;
+        color: #999;
+        padding: 5px;
+    }
+
+    /* Backdrop */
+    .legend.expanded::before {
+        content: '';
+        position: fixed;
+        top: -100vh; left: -100vw; right: -100vw; bottom: -100vh; /* Cover full screen */
+        background: rgba(0,0,0,0.6);
+        z-index: -1; /* Behind content */
+        pointer-events: auto; /* Catch clicks */
+    }
+
+    /* Larger Touch Targets for Controls */
+    .mode-btn {
+        padding: 8px 16px;
+        font-size: 1rem;
+        flex: 1;
+        text-align: center;
+    }
+    
+    .control-header > div {
+        display: flex;
+        gap: 5px;
+        width: 60%;
+    }
+
+    .play-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 18px;
+    }
+    
+    .time-slider {
+        height: 30px; /* Increase hit area */
+        margin: 0 10px;
+    }
+    
+    .control-row {
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .date-input {
+        font-size: 1rem;
+        padding: 8px;
+    }
+
+    /* Adjust Layer Control Position to avoid overlap */
+    .leaflet-top.leaflet-right {
+        top: 10px;
+        right: 10px;
+    }
+    .leaflet-control-layers-toggle {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+/* --- Mobile Split Screen Layout --- */
+@media (max-width: 768px) {
+    body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden; 
+    }
+
+    /* Force Map to top 55% */
+    #map {
+        height: 75vh !important;
+        width: 100%;
+        flex: none;
+    }
+
+    /* Info Control Panel - Fixed at bottom 45% */
+    .leaflet-bottom.leaflet-left .info-control {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 18vh !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border-top: 1px solid #ccc; /* Visual separator */
+        background: white;
+        z-index: 5000;
+        overflow-y: auto !important;
+        padding: 10px 15px; /* Better padding */
+        padding-bottom: 30px; /* Safe area for swipe bars */
+        transform: none !important;
+        max-width: none !important;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1) !important;
+    }
+
+    /* Adjust Legend Position (Above the panel) */
+    .leaflet-bottom.leaflet-left .legend {
+        position: fixed !important;
+        bottom: 25vh !important; /* Just above 25vh */
+        left: 15px !important;
+        right: auto !important;
+        z-index: 5001;
+        background: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
+    
+    /* Ensure Toggle Button is visible and positioned */
+    .legend-toggle {
+        display: flex;
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        background: white;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    /* Ensure Legend Modal is on top of Bottom Panel */
+    .legend-content {
+        z-index: 6000 !important;
+    }
+    .legend.expanded::before {
+        z-index: 5500 !important;
+    }
+}

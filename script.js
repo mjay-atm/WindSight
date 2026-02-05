@@ -1,5 +1,6 @@
-// Initialize Map
-const map = L.map('map').setView([24.95, 121.20], 11);
+// Initialize Map with responsive zoom/center
+const isMobileInit = window.innerWidth < 768;
+const map = L.map('map').setView([24.95, 121.20], isMobileInit ? 10 : 11);
 
 // --- History Data Manager ---
 class HistoryDataManager {
@@ -131,10 +132,7 @@ function indexToDisplayTime(index) {
 
 infoControl.onAdd = function(map) {
     this._div = L.DomUtil.create('div', 'info-control');
-    this._div.style.padding = '6px 8px';
-    this._div.style.background = 'white';
-    this._div.style.boxShadow = '0 0 15px rgba(0,0,0,0.2)';
-    this._div.style.borderRadius = '5px';
+    // Styles moved to CSS for responsiveness
     
     // Initial HTML Structure
     this._div.innerHTML = `
@@ -467,6 +465,14 @@ function updateStationData(incomingData) {
         weatherMap[w['站號']] = w;
     });
 
+    // Dynamic Icon Sizing
+    const isMobile = window.innerWidth <= 768;
+    const arrowSize = isMobile ? 24 : 36;
+    const arrowAnchor = isMobile ? [12, 12] : [18, 18];
+    const noDataFontSize = isMobile ? '18px' : '26px';
+    const noDataAnchor = isMobile ? [9, 9] : [13, 13];
+    const calmSize = isMobile ? 10 : 14; // Smaller dot for calm
+
     // Iterate over all initialized markers
     Object.keys(stationMarkers).forEach(stationID => {
         const marker = stationMarkers[stationID];
@@ -485,15 +491,15 @@ function updateStationData(incomingData) {
                 icon = L.divIcon({
                     className: 'calm-icon',
                     html: `<div style="
-                        width: 14px; 
-                        height: 14px; 
+                        width: ${calmSize}px; 
+                        height: ${calmSize}px; 
                         background: white; 
                         border: 4px solid black; 
                         border-radius: 50%; 
                         box-shadow: 0 0 4px rgba(255,255,255,0.8);
                     "></div>`,
-                    iconSize: [22, 22],
-                    iconAnchor: [11, 11]
+                    iconSize: [calmSize + 8, calmSize + 8],
+                    iconAnchor: [(calmSize + 8)/2, (calmSize + 8)/2]
                 });
                 tooltipText += ` (靜風)`;
             } else {
@@ -504,7 +510,7 @@ function updateStationData(incomingData) {
                 icon = L.divIcon({
                     className: 'wind-arrow-icon',
                     html: `<div style="transform: rotate(${rotation}deg); filter: drop-shadow(1px 1px 3px rgba(0,0,0,0.6));">
-                            <svg viewBox="0 0 24 24" width="36" height="36">
+                            <svg viewBox="0 0 24 24" width="${arrowSize}" height="${arrowSize}">
                               <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" 
                                     fill="${color}" 
                                     stroke="white" 
@@ -512,8 +518,8 @@ function updateStationData(incomingData) {
                                     stroke-linejoin="round"/>
                             </svg>
                           </div>`,
-                    iconSize: [36, 36],
-                    iconAnchor: [18, 18]
+                    iconSize: [arrowSize, arrowSize],
+                    iconAnchor: arrowAnchor
                 });
 
                 const dirText = getWindDirection16(direction);
@@ -526,12 +532,12 @@ function updateStationData(incomingData) {
                 className: 'no-data-icon',
                 html: `<div style="
                      color: red; 
-                     font-size: 26px; 
+                     font-size: ${noDataFontSize}; 
                      font-weight: bold; 
-                     line-height: 26px;
+                     line-height: ${noDataFontSize};
                     ">&#10006;</div>`,
-                iconSize: [26, 26],
-                iconAnchor: [13, 13]
+                iconSize: [parseInt(noDataFontSize), parseInt(noDataFontSize)],
+                iconAnchor: noDataAnchor
             });
             tooltipText += ` (無風力資料)`;
         }
@@ -604,10 +610,30 @@ Promise.all([
 
     // Valid Legend Control
     const legend = L.control({ position: 'bottomleft' });
+
+    // Toggle Legend functionality for mobile
+    window.toggleLegend = function() {
+        const legendDiv = document.querySelector('.info.legend');
+        if (legendDiv) {
+            legendDiv.classList.toggle('expanded');
+        }
+    };
+
     legend.onAdd = function(map) {
         const div = L.DomUtil.create('div', 'info legend');
+        
+        // Prevent click propagation for the whole control to avoid map interaction
+        L.DomEvent.disableClickPropagation(div);
+
         div.innerHTML = `
-            <h4>風級圖示說明 (蒲福氏)</h4>
+            <div class="legend-toggle" onclick="toggleLegend()">i</div>
+            
+            <div class="legend-content">
+                <div class="legend-header-mobile">
+                    <h4>風級圖示說明 (蒲福氏)</h4>
+                    <span class="legend-close" onclick="toggleLegend()">&times;</span>
+                </div>
+                <h4 class="legend-header-desktop">風級圖示說明 (蒲福氏)</h4>
             
             <div class="l-grid">
                 <!-- 0 Level -->
@@ -676,6 +702,7 @@ Promise.all([
             <div class="legend-section" style="margin-top: 8px; border-top: 1px solid #eee; padding-top: 5px;">
                 <i style="color: red; font-weight: bold; background: none; width: auto; text-align: center;">&#10006;</i> 無資料 / 離線
             </div>
+            </div> <!-- End legend-content -->
         `;
         return div;
     };
