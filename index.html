@@ -10,10 +10,187 @@
     <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
     <!-- Add Chart.js for charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260205-2" />
+    <link rel="stylesheet" href="style.css?v=20260205-4" />
 </head>
 <body>
-    <div id="map"></div>
-    <script src="script.js?v=20260205-2"></script>
+    <div id="app-container">
+        <div id="sidebar">
+            <div class="info-control">
+                <div class="control-header">
+                    <b>資料來源</b>
+                    <div>
+                        <span id="btn-realtime" class="mode-btn active" onclick="setRealtimeMode()">即時</span>
+                        <span id="btn-history" class="mode-btn" onclick="setHistoryMode()">歷史</span>
+                        <span id="btn-stats" class="mode-btn" onclick="openStatsModal()">📊 統計</span>
+                    </div>
+                </div>
+
+                <!-- Content Area -->
+                <div id="info-content">
+                    <div style="line-height: 1.4;">
+                        <h4 style="margin: 0;">載入中...</h4>
+                    </div>
+                </div>
+
+                <!-- History Controls (Hidden by default) -->
+                <div id="history-controls" class="history-controls" style="display: none;">
+                    <div class="control-row">
+                        <input type="date" id="history-date" class="date-input">
+                    </div>
+                    <div class="control-row">
+                        <button id="play-btn" class="play-btn" onclick="togglePlay()">&#9654;</button> <!-- Play Icon -->
+                        <input type="range" id="time-slider" class="time-slider" min="0" max="143" value="0" step="1" oninput="handleSliderChange(this.value)">
+                        <span id="time-display" class="time-display">00:00</span>
+                    </div>
+                    <div id="progress-container" style="display:none;">
+                        <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+                        <div id="loading-text" class="loading-text">載入資料中... 0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="station-details-panel" class="info-control" style="display: none;">
+                <div class="control-header" style="justify-content: flex-start; gap: 10px;">
+                    <b>測站資訊</b>
+                    <span id="station-details-title" style="font-size: 0.9em; color: #666;"></span>
+                    <span style="font-size: 16px; font-weight: bold; cursor: pointer; position: absolute; right: 15px;" onclick="closeStationPanel()">&times;</span>
+                </div>
+                <div id="station-details-content"></div>
+            </div>
+        </div>
+        <div id="map-container">
+            <div id="map"></div>
+            
+            <div class="legend">
+                <div class="legend-toggle" onclick="toggleLegend()">i</div>
+                
+                <div class="legend-content">
+                    <div class="legend-header-mobile">
+                        <h4>風級圖示說明 (蒲福氏)</h4>
+                        <span class="legend-close" onclick="toggleLegend()">&times;</span>
+                    </div>
+                    <h4 class="legend-header-desktop">風級圖示說明 (蒲福氏)</h4>
+                
+                <div class="l-grid">
+                    <!-- 0 Level -->
+                    <div class="l-icon"><i style="background: white; border: 3px solid black; border-radius: 50%; width: 10px; height: 10px; box-shadow: 0 0 2px gray;"></i></div>
+                    <div class="l-lvl">0</div>
+                    <div class="l-unit">級</div>
+                    <div class="l-sep">（</div>
+                    <div class="l-spd">&lt; 0.3</div>
+                    <div class="l-unit">m/s）</div>
+
+                    <!-- General Header -->
+                    <div class="l-head">一般風況</div>
+
+                    <!-- 1 Level -->
+                    <div class="l-icon"><i style="background: #92efd9; border: 1px solid #333;"></i></div>
+                    <div class="l-lvl">1</div>
+                    <div class="l-unit">級</div>
+                    <div class="l-sep">（</div>
+                    <div class="l-spd">0.3-1.5</div>
+                    <div class="l-unit">m/s）</div>
+
+                    <!-- 2-3 Level -->
+                    <div class="l-icon"><i style="background: #00a5e1; border: 1px solid #333;"></i></div>
+                    <div class="l-lvl">2-3</div>
+                    <div class="l-unit">級</div>
+                    <div class="l-sep">（</div>
+                    <div class="l-spd">1.6-5.4</div>
+                    <div class="l-unit">m/s）</div>
+
+                    <!-- 4-5 Level -->
+                    <div class="l-icon"><i style="background: #1b467a; border: 1px solid #333;"></i></div>
+                    <div class="l-lvl">4-5</div>
+                    <div class="l-unit">級</div>
+                    <div class="l-sep">（</div>
+                    <div class="l-spd">5.5-10.7</div>
+                    <div class="l-unit">m/s）</div>
+
+                    <!-- Warning Header -->
+                    <div class="l-head l-warn">強風警示</div>
+
+                    <!-- 6-7 Level -->
+                    <div class="l-icon"><i style="background: #fec44f; border: 1px solid #333;"></i></div>
+                    <div class="l-lvl">6-7</div>
+                    <div class="l-unit">級</div>
+                    <div class="l-sep">（</div>
+                    <div class="l-spd">10.8-17.1</div>
+                    <div class="l-unit">m/s）</div>
+
+                    <!-- 8-9 Level -->
+                    <div class="l-icon"><i style="background: #e31a1c; border: 1px solid #333;"></i></div>
+                    <div class="l-lvl">8-9</div>
+                    <div class="l-unit">級</div>
+                    <div class="l-sep">（</div>
+                    <div class="l-spd">17.2-24.4</div>
+                    <div class="l-unit">m/s）</div>
+
+                    <!-- 10+ Level -->
+                    <div class="l-icon"><i style="background: #99000d; border: 1px solid #333;"></i></div>
+                    <div class="l-lvl">10+</div>
+                    <div class="l-unit">級</div>
+                    <div class="l-sep">（</div>
+                    <div class="l-spd">≥ 24.5</div>
+                    <div class="l-unit">m/s）</div>
+                </div>
+
+                <div class="legend-section" style="margin-top: 8px; border-top: 1px solid #eee; padding-top: 5px;">
+                    <i style="color: red; font-weight: bold; background: none; width: auto; text-align: center;">&#10006;</i> 無資料 / 離線
+                </div>
+                </div> <!-- End legend-content -->
+            </div>
+        </div>
+    </div>
+    <div id="stats-modal" class="stats-modal" style="display: none;">
+        <div class="stats-container">
+            <div class="stats-header">
+                <h3>📊 全市統計分析 (City-wide Statistics)</h3>
+                <span class="close-btn" onclick="closeStatsModal()">&times;</span>
+            </div>
+            <div class="stats-controls">
+                <label>開始日期: <input type="date" id="stats-start-date"></label>
+                <label>結束日期: <input type="date" id="stats-end-date"></label>
+                <button class="action-btn" onclick="calculateStats()">開始計算</button>
+            </div>
+            <div id="stats-progress" class="stats-progress" style="display: none;">
+                <div class="progress-bar"><div id="stats-progress-fill" class="progress-fill"></div></div>
+                <div id="stats-status-text">準備計算...</div>
+            </div>
+            <div class="stats-dashboard">
+                <div class="stats-card card-windrose">
+                    <h4>風向分佈 (Wind Direction)</h4>
+                    <div class="chart-wrapper">
+                        <canvas id="chart-windrose"></canvas>
+                    </div>
+                </div>
+                <div class="stats-card card-diurnal">
+                    <h4>日夜風速變化 (Diurnal Trend)</h4>
+                    <div class="chart-wrapper">
+                        <canvas id="chart-diurnal"></canvas>
+                    </div>
+                </div>
+                <div class="stats-card card-gusts">
+                    <h4>最強陣風排行 (Max Gust Leaderboard)</h4>
+                    <div class="table-wrapper">
+                        <table id="table-gusts">
+                            <thead>
+                                <tr>
+                                    <th>排名</th>
+                                    <th>測站</th>
+                                    <th>時間</th>
+                                    <th>陣風 (m/s)</th>
+                                </tr>
+                            </thead>
+                            <tbody>3
+                                <!-- Dynamic Content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js?v=20260205-4"></script>
 </body>
 </html>
