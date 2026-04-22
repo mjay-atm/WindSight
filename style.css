@@ -486,7 +486,7 @@ body { margin: 0; padding: 0; }
 .stats-dashboard {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: minmax(260px, 1fr) minmax(720px, 2.4fr) minmax(220px, 1fr);
+    grid-template-rows: minmax(260px, 1fr) minmax(720px, 2.4fr) minmax(220px, 1fr) minmax(220px, 1fr);
     gap: 15px;
     flex: 1;
     overflow-y: auto;
@@ -510,6 +510,12 @@ body { margin: 0; padding: 0; }
 .card-diurnal { grid-column: 2 / 3; grid-row: 1 / 2; }
 .card-station-map { grid-column: 1 / -1; grid-row: 2 / 3; }
 .card-gusts { grid-column: 1 / -1; grid-row: 3 / 4; }
+.card-alert-freq { grid-column: 1 / -1; grid-row: 4 / 5; }
+
+/* Enlarge alert panel to at least 3x original height */
+.card-alert-freq {
+    min-height: 800px;
+}
 
 .chart-wrapper {
     flex: 1;
@@ -618,6 +624,55 @@ body { margin: 0; padding: 0; }
 #table-gusts th { background-color: #f2f2f2; font-weight: bold; }
 #table-gusts tr:nth-child(even) { background-color: #fff; }
 #table-gusts tr:nth-child(odd) { background-color: #fafafa; }
+
+/* Alert Frequency Table */
+.alert-freq-legend {
+    font-size: 0.82rem;
+    color: #555;
+    margin-bottom: 8px;
+    line-height: 2;
+}
+.alert-freq-total {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 8px;
+}
+.alert-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.85rem;
+}
+.alert-badge-yellow { background: #fff3b0; color: #7a6000; border: 1px solid #e6c800; }
+.alert-badge-orange { background: #ffe0b2; color: #7a3800; border: 1px solid #e68a00; }
+.alert-badge-red    { background: #ffcdd2; color: #7a0000; border: 1px solid #e60000; }
+
+#table-alert-freq {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+#table-alert-freq th, #table-alert-freq td {
+    border: 1px solid #ddd;
+    padding: 9px 12px;
+    text-align: center;
+    vertical-align: middle;
+}
+#table-alert-freq tbody td:first-child { text-align: left; }
+#table-alert-freq th { background-color: #f2f2f2; font-weight: bold; }
+#table-alert-freq tr:nth-child(even) { background-color: #fff; }
+#table-alert-freq tr:nth-child(odd) { background-color: #fafafa; }
+
+.th-yellow { background: #fff9c4 !important; color: #7a6000; }
+.th-orange { background: #fff3e0 !important; color: #7a3800; }
+.th-red    { background: #ffebee !important; color: #7a0000; }
+
+.alert-cell { font-variant-numeric: tabular-nums; }
+.alert-yellow { background: rgba(255, 243, 176, 0.25); }
+.alert-orange { background: rgba(255, 224, 178, 0.25); }
+.alert-red    { background: rgba(255, 205, 210, 0.25); }
 
 /* Mobile Adjustments */
 @media (max-width: 768px) {

@@ -1205,7 +1205,11 @@ function calculateRangeStats(startStr, endStr) {
                     speedCount: 0,
                     dirX: 0,
                     dirY: 0,
-                    dirCount: 0
+                    dirCount: 0,
+                    yellowCount: 0,
+                    orangeCount: 0,
+                    redCount: 0,
+                    alertSlotCount: 0
                 };
             }
 
@@ -1235,8 +1239,24 @@ function calculateRangeStats(startStr, endStr) {
                 }
             }
 
-            // 3. Max Gusts
+            // 3. Max Gusts & Alert Frequency
             const gust = parseFloat(station['陣風(m/s)']);
+
+            // Alert frequency counting
+            if (stationId) {
+                const avgForAlert = isNaN(speed) ? -1 : speed;
+                const gustForAlert = isNaN(gust) ? -1 : gust;
+                if (avgForAlert >= 0 || gustForAlert >= 0) {
+                    stationAverages[stationId].alertSlotCount++;
+                    // Yellow: avg ≥ B6 (10.8 m/s) or gust ≥ B8 (17.2 m/s)
+                    if (avgForAlert >= 10.8 || gustForAlert >= 17.2) stationAverages[stationId].yellowCount++;
+                    // Orange: avg ≥ B9 (20.8 m/s) or gust ≥ B11 (28.5 m/s)
+                    if (avgForAlert >= 20.8 || gustForAlert >= 28.5) stationAverages[stationId].orangeCount++;
+                    // Red: avg ≥ B12 (32.7 m/s) or gust ≥ B14 (41.5 m/s)
+                    if (avgForAlert >= 32.7 || gustForAlert >= 41.5) stationAverages[stationId].redCount++;
+                }
+            }
+
             if (!isNaN(gust)) {
                  if (maxGusts.length < 5 || gust > maxGusts[maxGusts.length - 1].speed) {
                     const rawDate = slot.key.split('_')[0]; // YYYYMMDD
@@ -1266,10 +1286,20 @@ function calculateRangeStats(startStr, endStr) {
             ? ((Math.atan2(aggregate.dirX, aggregate.dirY) * 180 / Math.PI) + 360) % 360
             : null;
 
+        const total = aggregate.alertSlotCount;
         stationAverageFinal[stationId] = {
             avgSpeed,
             avgDirection,
-            sampleCount: Math.max(aggregate.speedCount, aggregate.dirCount)
+            sampleCount: Math.max(aggregate.speedCount, aggregate.dirCount),
+            alertFreq: {
+                total,
+                yellowCount: aggregate.yellowCount,
+                orangeCount: aggregate.orangeCount,
+                redCount: aggregate.redCount,
+                yellow: total > 0 ? (aggregate.yellowCount / total * 100) : 0,
+                orange: total > 0 ? (aggregate.orangeCount / total * 100) : 0,
+                red: total > 0 ? (aggregate.redCount / total * 100) : 0
+            }
         };
     });
 
@@ -1384,4 +1414,67 @@ function renderStats(stats) {
     });
 
     renderStatsMap(stats.stationAverages);
+
+    // 4. Alert Frequency Table
+    renderAlertFrequency(stats.stationAverages);
+}
+
+function renderAlertFrequency(stationAverages) {
+    const tbody = document.querySelector('#table-alert-freq tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const totalEl = document.getElementById('alert-freq-total');
+    const totalValidRecords = Object.values(stationAverages || {}).reduce((sum, stationData) => {
+        const total = stationData?.alertFreq?.total || 0;
+        return sum + total;
+    }, 0);
+    if (totalEl) {
+        totalEl.innerText = `有效資料總筆數：${totalValidRecords.toLocaleString('zh-TW')}`;
+    }
+
+    const getDistrict = (stationData) => {
+        const addr = (stationData && stationData.Address) ? stationData.Address.trim() : '';
+        if (!addr) return '未知';
+        const match = addr.match(/^(.+?[區鄉鎮市])/);
+        return match ? match[1] : '未知';
+    };
+
+    // Build rows with station name lookup from stationMarkers
+    const rows = Object.keys(stationAverages).map(stationId => {
+        const marker = stationMarkers[stationId];
+        const name = marker ? marker.stationData.StationName : stationId;
+        const district = marker ? getDistrict(marker.stationData) : '未知';
+        const af = stationAverages[stationId].alertFreq;
+        if (!af || af.total === 0) return null;
+        if (af.yellowCount === 0 && af.orangeCount === 0 && af.redCount === 0) return null;
+        return { stationId, name, district, af };
+    }).filter(Boolean);
+
+    // Sort by yellow count descending
+    rows.sort((a, b) => {
+        if (b.af.yellowCount !== a.af.yellowCount) return b.af.yellowCount - a.af.yellowCount;
+        if (b.af.orangeCount !== a.af.orangeCount) return b.af.orangeCount - a.af.orangeCount;
+        return b.af.redCount - a.af.redCount;
+    });
+
+    rows.forEach(({ name, district, af }) => {
+        const fmt = (count, pct) => count > 0
+            ? `${count} 次 <span style="color:#888;font-size:0.85em">(${pct.toFixed(1)}%)</span>`
+            : `<span style="color:#bbb">—</span>`;
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td style="text-align:left; font-weight:500">${name}</td>
+            <td>${district}</td>
+            <td class="alert-cell alert-yellow">${fmt(af.yellowCount, af.yellow)}</td>
+            <td class="alert-cell alert-orange">${fmt(af.orangeCount, af.orange)}</td>
+            <td class="alert-cell alert-red">${fmt(af.redCount, af.red)}</td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#aaa; padding:20px;">無達標測站</td></tr>';
+    }
 }

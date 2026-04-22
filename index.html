@@ -260,6 +260,33 @@
                         </table>
                     </div>
                 </div>
+                <div class="stats-card card-alert-freq">
+                    <h4>強風特報達標頻率 (Strong Wind Alert Frequency)</h4>
+                    <div class="alert-freq-legend">
+                        <span class="alert-badge alert-badge-yellow">🟡 黃色</span>：平均風 ≥ 6級 或 陣風 ≥ 8級
+                        &emsp;
+                        <span class="alert-badge alert-badge-orange">🟠 橙色</span>：平均風 ≥ 9級 或 陣風 ≥ 11級
+                        &emsp;
+                        <span class="alert-badge alert-badge-red">🔴 紅色</span>：平均風 ≥ 12級 或 陣風 ≥ 14級
+                    </div>
+                    <div id="alert-freq-total" class="alert-freq-total">有效資料總筆數：0</div>
+                    <div class="table-wrapper">
+                        <table id="table-alert-freq">
+                            <thead>
+                                <tr>
+                                    <th>測站</th>
+                                    <th>行政區</th>
+                                    <th class="th-yellow">🟡 黃色<br><small>平均風≥B6 / 陣風≥B8</small></th>
+                                    <th class="th-orange">🟠 橙色<br><small>平均風≥B9 / 陣風≥B11</small></th>
+                                    <th class="th-red">🔴 紅色<br><small>平均風≥B12 / 陣風≥B14</small></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic Content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
