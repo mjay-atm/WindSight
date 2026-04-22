@@ -602,6 +602,77 @@ function getWindDirection16(d) {
     return directions[index];
 }
 
+function createWindMarkerPresentation(station, w, options = {}) {
+    const isMobile = options.isMobile ?? (window.innerWidth <= 768);
+    const compact = options.compact === true;
+    const arrowSize = compact ? 28 : (isMobile ? 24 : 36);
+    const arrowAnchor = compact ? [14, 14] : (isMobile ? [12, 12] : [18, 18]);
+    const noDataFontSize = compact ? '20px' : (isMobile ? '18px' : '26px');
+    const noDataAnchor = compact ? [10, 10] : (isMobile ? [9, 9] : [13, 13]);
+    const calmSize = compact ? 12 : (isMobile ? 10 : 14);
+
+    let icon;
+    let tooltipText = station.StationName;
+
+    const speed = parseFloat(w['平均風(m/s)']);
+    const direction = parseFloat(w['風向(degree)']);
+
+    if (w['站號'] && !isNaN(speed) && !isNaN(direction) && direction >= 0 && direction <= 360) {
+        if (speed <= 0.2) {
+            icon = L.divIcon({
+                className: 'calm-icon',
+                html: `<div style="
+                    width: ${calmSize}px;
+                    height: ${calmSize}px;
+                    background: white;
+                    border: 4px solid black;
+                    border-radius: 50%;
+                    box-shadow: 0 0 4px rgba(255,255,255,0.8);
+                "></div>`,
+                iconSize: [calmSize + 8, calmSize + 8],
+                iconAnchor: [(calmSize + 8) / 2, (calmSize + 8) / 2]
+            });
+            tooltipText += ` (靜風)`;
+        } else {
+            const color = getWindColor(speed);
+            const rotation = direction + 180;
+
+            icon = L.divIcon({
+                className: 'wind-arrow-icon',
+                html: `<div style="transform: rotate(${rotation}deg); filter: drop-shadow(1px 1px 3px rgba(0,0,0,0.6));">
+                        <svg viewBox="0 0 24 24" width="${arrowSize}" height="${arrowSize}">
+                          <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z"
+                                fill="${color}"
+                                stroke="white"
+                                stroke-width="2"
+                                stroke-linejoin="round"/>
+                        </svg>
+                      </div>`,
+                iconSize: [arrowSize, arrowSize],
+                iconAnchor: arrowAnchor
+            });
+
+            const dirText = getWindDirection16(direction);
+            tooltipText += ` (${dirText}，${speed.toFixed(1)} m/s)`;
+        }
+    } else {
+        icon = L.divIcon({
+            className: 'no-data-icon',
+            html: `<div style="
+                 color: red;
+                 font-size: ${noDataFontSize};
+                 font-weight: bold;
+                 line-height: ${noDataFontSize};
+                ">&#10006;</div>`,
+            iconSize: [parseInt(noDataFontSize, 10), parseInt(noDataFontSize, 10)],
+            iconAnchor: noDataAnchor
+        });
+        tooltipText += ` (無風力資料)`;
+    }
+
+    return { icon, tooltipText };
+}
+
 function initStations(stations) {
     stations.forEach(function(station) {
         // Default No Data Icon
@@ -658,13 +729,7 @@ function updateStationData(incomingData) {
         weatherMap[w['站號']] = w;
     });
 
-    // Dynamic Icon Sizing
     const isMobile = window.innerWidth <= 768;
-    const arrowSize = isMobile ? 24 : 36;
-    const arrowAnchor = isMobile ? [12, 12] : [18, 18];
-    const noDataFontSize = isMobile ? '18px' : '26px';
-    const noDataAnchor = isMobile ? [9, 9] : [13, 13];
-    const calmSize = isMobile ? 10 : 14; // Smaller dot for calm
 
     // Iterate over all initialized markers
     Object.keys(stationMarkers).forEach(stationID => {
@@ -675,68 +740,7 @@ function updateStationData(incomingData) {
         // Store current weather on marker for click handler
         marker.currentWeather = w;
         
-        let icon;
-        let tooltipText = station.StationName;
-
-        const speed = parseFloat(w['平均風(m/s)']);
-        const direction = parseFloat(w['風向(degree)']);
-
-        if (w['站號'] && !isNaN(speed) && !isNaN(direction) && direction >= 0 && direction <= 360) {
-            // Calm Wind
-            if (speed <= 0.2) {
-                icon = L.divIcon({
-                    className: 'calm-icon',
-                    html: `<div style="
-                        width: ${calmSize}px; 
-                        height: ${calmSize}px; 
-                        background: white; 
-                        border: 4px solid black; 
-                        border-radius: 50%; 
-                        box-shadow: 0 0 4px rgba(255,255,255,0.8);
-                    "></div>`,
-                    iconSize: [calmSize + 8, calmSize + 8],
-                    iconAnchor: [(calmSize + 8)/2, (calmSize + 8)/2]
-                });
-                tooltipText += ` (靜風)`;
-            } else {
-                // Wind Arrow
-                const color = getWindColor(speed);
-                const rotation = direction + 180;
-
-                icon = L.divIcon({
-                    className: 'wind-arrow-icon',
-                    html: `<div style="transform: rotate(${rotation}deg); filter: drop-shadow(1px 1px 3px rgba(0,0,0,0.6));">
-                            <svg viewBox="0 0 24 24" width="${arrowSize}" height="${arrowSize}">
-                              <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" 
-                                    fill="${color}" 
-                                    stroke="white" 
-                                    stroke-width="2" 
-                                    stroke-linejoin="round"/>
-                            </svg>
-                          </div>`,
-                    iconSize: [arrowSize, arrowSize],
-                    iconAnchor: arrowAnchor
-                });
-
-                const dirText = getWindDirection16(direction);
-                tooltipText += ` (${dirText}，${speed} m/s)`;
-            }
-
-        } else {
-            // No Data
-            icon = L.divIcon({
-                className: 'no-data-icon',
-                html: `<div style="
-                     color: red; 
-                     font-size: ${noDataFontSize}; 
-                     font-weight: bold; 
-                     line-height: ${noDataFontSize};
-                    ">&#10006;</div>`,
-                iconSize: [parseInt(noDataFontSize), parseInt(noDataFontSize)],
-                iconAnchor: noDataAnchor
-            });
-            tooltipText += ` (無風力資料)`;
-        }
+        const { icon, tooltipText } = createWindMarkerPresentation(station, w, { isMobile });
 
         marker.setIcon(icon);
         marker.setTooltipContent(tooltipText);
@@ -824,8 +828,14 @@ Promise.all([
 fetch('data/taoyuan_towns_moi.json')
     .then(res => res.json())
     .then(townData => {
+        taoyuanTownGeoJson = townData;
+
         // A. Add Towns to Town Layer
         townLayer.addData(townData);
+        if (statsMapTownLayer) {
+            statsMapTownLayer.clearLayers();
+            statsMapTownLayer.addData(townData);
+        }
 
         // B. Create City Mask using Turf.js
         try {
@@ -833,6 +843,8 @@ fetch('data/taoyuan_towns_moi.json')
             const taoyuanFeature = dissolved.features[0];
 
             if (taoyuanFeature) {
+                taoyuanBoundaryFeature = taoyuanFeature;
+
                 // Prepare Mask Geometry (World minus Taoyuan)
                 const worldLatLngs = [
                     [90, -180],
@@ -863,6 +875,10 @@ fetch('data/taoyuan_towns_moi.json')
                     interactive: false
                 }).addTo(maskLayer);
 
+                if (statsMapMaskLayer) {
+                    rebuildStatsMapMask(taoyuanFeature);
+                }
+
                 // Create Thick Black Border for Taoyuan City
                 L.geoJSON(taoyuanFeature, {
                     style: {
@@ -875,7 +891,11 @@ fetch('data/taoyuan_towns_moi.json')
 
                 // Fit Bounds
                 const bounds = L.geoJSON(taoyuanFeature).getBounds();
+                taoyuanBoundaryBounds = bounds;
                 map.fitBounds(bounds);
+                if (statsMap) {
+                    statsMap.fitBounds(bounds, { padding: [20, 20] });
+                }
             }
         } catch (e) {
             console.error("Turf.js operation failed:", e);
@@ -907,6 +927,61 @@ map.on('popupopen', function(e) {
 
 /* --- Statistics Dashboard Logic --- */
 
+const STATS_MAP_MIN_ZOOM = 9;
+const STATS_MAP_MAX_ZOOM = 13.5;
+const STATS_MAP_ZOOM_STEP = 0.05;
+
+let statsMap = null;
+let statsMapStationsLayer = null;
+let statsMapTownLayer = null;
+let statsMapMaskLayer = null;
+let statsMapZoomSlider = null;
+let isSyncingStatsMapZoom = false;
+let latestStats = null;
+let taoyuanTownGeoJson = null;
+let taoyuanBoundaryBounds = null;
+let taoyuanBoundaryFeature = null;
+
+function rebuildStatsMapMask(feature) {
+    if (!feature || !statsMapMaskLayer) return;
+
+    statsMapMaskLayer.clearLayers();
+
+    const worldLatLngs = [
+        [90, -180],
+        [90, 180],
+        [-90, 180],
+        [-90, -180]
+    ];
+
+    const taoyuanLatLngs = [];
+    const flipCoords = ring => ring.map(coord => [coord[1], coord[0]]);
+
+    if (feature.geometry.type === 'Polygon') {
+        taoyuanLatLngs.push(flipCoords(feature.geometry.coordinates[0]));
+    } else if (feature.geometry.type === 'MultiPolygon') {
+        feature.geometry.coordinates.forEach(poly => {
+            taoyuanLatLngs.push(flipCoords(poly[0]));
+        });
+    }
+
+    L.polygon([worldLatLngs, ...taoyuanLatLngs], {
+        color: 'transparent',
+        fillColor: '#ffffff',
+        fillOpacity: 1,
+        interactive: false
+    }).addTo(statsMapMaskLayer);
+
+    L.geoJSON(feature, {
+        style: {
+            color: 'black',
+            weight: 3,
+            fill: false,
+            interactive: false
+        }
+    }).addTo(statsMapMaskLayer);
+}
+
 // Initial Date Setup
 setTimeout(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -928,11 +1003,133 @@ setTimeout(() => {
 
 window.openStatsModal = function() {
     document.getElementById('stats-modal').style.display = 'flex';
+    ensureStatsMap();
+    setTimeout(() => {
+        if (statsMap) {
+            statsMap.invalidateSize();
+            if (taoyuanBoundaryBounds) {
+                statsMap.fitBounds(taoyuanBoundaryBounds, { padding: [20, 20] });
+            }
+        }
+    }, 0);
 };
 
 window.closeStatsModal = function() {
     document.getElementById('stats-modal').style.display = 'none';
 };
+
+function syncStatsMapZoomSlider(zoomLevel) {
+    if (!statsMapZoomSlider) return;
+    statsMapZoomSlider.value = Number(zoomLevel).toFixed(2);
+}
+
+function ensureStatsMap() {
+    if (statsMap || !document.getElementById('stats-map')) return;
+
+    statsMapZoomSlider = document.getElementById('stats-map-zoom-range');
+
+    statsMap = L.map('stats-map', {
+        zoomControl: true,
+        attributionControl: false,
+        zoomSnap: STATS_MAP_ZOOM_STEP,
+        zoomDelta: 0.25,
+        wheelPxPerZoomLevel: 90,
+        minZoom: STATS_MAP_MIN_ZOOM,
+        maxZoom: STATS_MAP_MAX_ZOOM
+    }).setView([24.95, 121.20], 11);
+
+    statsMapMaskLayer = L.layerGroup().addTo(statsMap);
+
+    statsMapTownLayer = L.geoJSON(null, {
+        style: {
+            color: '#666',
+            weight: 1,
+            fill: false,
+            dashArray: '5, 5'
+        },
+        interactive: false
+    }).addTo(statsMap);
+
+    statsMapStationsLayer = L.layerGroup().addTo(statsMap);
+
+    if (statsMapZoomSlider) {
+        syncStatsMapZoomSlider(statsMap.getZoom());
+        statsMapZoomSlider.addEventListener('input', event => {
+            if (!statsMap) return;
+            isSyncingStatsMapZoom = true;
+            statsMap.setZoom(parseFloat(event.target.value));
+            isSyncingStatsMapZoom = false;
+        });
+    }
+
+    statsMap.on('zoom', () => {
+        if (!isSyncingStatsMapZoom) {
+            syncStatsMapZoomSlider(statsMap.getZoom());
+        }
+    });
+
+    if (taoyuanTownGeoJson) {
+        statsMapTownLayer.addData(taoyuanTownGeoJson);
+    }
+
+    if (taoyuanBoundaryFeature) {
+        rebuildStatsMapMask(taoyuanBoundaryFeature);
+    }
+
+    if (taoyuanBoundaryBounds) {
+        statsMap.fitBounds(taoyuanBoundaryBounds, { padding: [20, 20] });
+        syncStatsMapZoomSlider(statsMap.getZoom());
+    }
+
+    if (latestStats) {
+        renderStatsMap(latestStats.stationAverages);
+    }
+}
+
+function formatAverageWindValue(value, digits = 1) {
+    return typeof value === 'number' && !isNaN(value) ? value.toFixed(digits) : '無資料';
+}
+
+function renderStatsMap(stationAverages) {
+    ensureStatsMap();
+    if (!statsMapStationsLayer) return;
+
+    statsMapStationsLayer.clearLayers();
+
+    Object.keys(stationMarkers).forEach(stationID => {
+        const sourceMarker = stationMarkers[stationID];
+        const station = sourceMarker.stationData;
+        const stationAverage = stationAverages?.[stationID] || null;
+        const weatherLikeData = stationAverage ? {
+            '站號': stationID,
+            '平均風(m/s)': stationAverage.avgSpeed,
+            '風向(degree)': stationAverage.avgDirection
+        } : {};
+
+        const { icon, tooltipText } = createWindMarkerPresentation(station, weatherLikeData, { compact: true, isMobile: false });
+        const marker = L.marker([station.Latitude, station.Longitude], { icon });
+        const avgSpeedText = formatAverageWindValue(stationAverage?.avgSpeed, 2);
+        const avgDirectionText = typeof stationAverage?.avgDirection === 'number'
+            ? `${getWindDirection16(stationAverage.avgDirection)} (${stationAverage.avgDirection.toFixed(0)}°)`
+            : '無資料';
+
+        marker.bindTooltip(tooltipText, {
+            direction: 'top',
+            offset: [0, -14]
+        });
+        marker.bindPopup(`
+            <b>${station.StationName} (${station.StationID})</b><br>
+            平均風速: <b>${avgSpeedText}</b> m/s<br>
+            平均風向: <b>${avgDirectionText}</b><br>
+            有效樣本數: <b>${stationAverage?.sampleCount || 0}</b>
+        `);
+        marker.addTo(statsMapStationsLayer);
+    });
+
+    if (statsMap) {
+        statsMap.invalidateSize();
+    }
+}
 
 window.calculateStats = function() {
     const startStr = document.getElementById('stats-start-date').value;
@@ -985,6 +1182,7 @@ function calculateRangeStats(startStr, endStr) {
     const diurnalSpeeds = new Array(144).fill(0); // Sum of speeds
     const diurnalCounts = new Array(144).fill(0); // Count of valid readings
     const maxGusts = []; // Keep top 5
+    const stationAverages = {};
 
     slots.forEach(slot => {
         const rawData = historyManager.cache[slot.key];
@@ -1000,11 +1198,29 @@ function calculateRangeStats(startStr, endStr) {
         const timeIndex = (hh * 6) + (mm / 10);
 
         data.forEach(station => {
+            const stationId = station['站號'];
+            if (stationId && !stationAverages[stationId]) {
+                stationAverages[stationId] = {
+                    speedSum: 0,
+                    speedCount: 0,
+                    dirX: 0,
+                    dirY: 0,
+                    dirCount: 0
+                };
+            }
+
             // 1. Wind Rose (Direction)
             const dir = parseFloat(station['風向(degree)']);
             if (!isNaN(dir)) {
                 const dirIndex = Math.round(dir / 22.5) % 16;
                 windDirCounts[dirIndex]++;
+
+                if (stationId) {
+                    const dirRad = dir * Math.PI / 180;
+                    stationAverages[stationId].dirX += Math.sin(dirRad);
+                    stationAverages[stationId].dirY += Math.cos(dirRad);
+                    stationAverages[stationId].dirCount++;
+                }
             }
 
             // 2. Diurnal Trend (Avg Speed)
@@ -1012,6 +1228,11 @@ function calculateRangeStats(startStr, endStr) {
             if (!isNaN(speed)) {
                 diurnalSpeeds[timeIndex] += speed;
                 diurnalCounts[timeIndex]++;
+
+                if (stationId) {
+                    stationAverages[stationId].speedSum += speed;
+                    stationAverages[stationId].speedCount++;
+                }
             }
 
             // 3. Max Gusts
@@ -1035,11 +1256,28 @@ function calculateRangeStats(startStr, endStr) {
     });
 
     const diurnalAvgFinal = diurnalSpeeds.map((sum, i) => diurnalCounts[i] > 0 ? (sum / diurnalCounts[i]) : 0);
+    const stationAverageFinal = {};
+
+    Object.keys(stationAverages).forEach(stationId => {
+        const aggregate = stationAverages[stationId];
+        const avgSpeed = aggregate.speedCount > 0 ? (aggregate.speedSum / aggregate.speedCount) : null;
+        const vectorMagnitude = Math.hypot(aggregate.dirX, aggregate.dirY);
+        const avgDirection = aggregate.dirCount > 0 && vectorMagnitude > 0.0001
+            ? ((Math.atan2(aggregate.dirX, aggregate.dirY) * 180 / Math.PI) + 360) % 360
+            : null;
+
+        stationAverageFinal[stationId] = {
+            avgSpeed,
+            avgDirection,
+            sampleCount: Math.max(aggregate.speedCount, aggregate.dirCount)
+        };
+    });
 
     return {
         windDirCounts,
         diurnalAvg: diurnalAvgFinal,
-        maxGusts
+        maxGusts,
+        stationAverages: stationAverageFinal
     };
 }
 
@@ -1047,6 +1285,8 @@ let windRoseChart = null;
 let diurnalChart = null;
 
 function renderStats(stats) {
+    latestStats = stats;
+
     // 1. Wind Rose (Polar Area)
     const ctxWR = document.getElementById('chart-windrose');
     if (windRoseChart) windRoseChart.destroy();
@@ -1142,4 +1382,6 @@ function renderStats(stats) {
         </tr>`;
         tbody.innerHTML += row;
     });
+
+    renderStatsMap(stats.stationAverages);
 }

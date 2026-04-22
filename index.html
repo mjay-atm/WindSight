@@ -170,6 +170,78 @@
                         <canvas id="chart-diurnal"></canvas>
                     </div>
                 </div>
+                <div class="stats-card card-station-map">
+                    <h4>測站平均風場地圖 (Station Average Wind Map)</h4>
+                    <div class="stats-map-shell">
+                        <div class="stats-map-frame">
+                            <div id="stats-map"></div>
+                            <div class="stats-map-zoom-slider" aria-label="地圖縮放控制">
+                                <input type="range" id="stats-map-zoom-range" min="9" max="13.5" step="0.05" value="11" aria-label="測站平均風場地圖縮放滑桿">
+                            </div>
+                            <div class="stats-map-legend">
+                                <div class="legend-section">
+                                    <div class="l-grid">
+                                        <div class="l-icon"><i style="background: white; border: 3px solid black; border-radius: 50%; width: 10px; height: 10px; box-shadow: 0 0 2px gray;"></i></div>
+                                        <div class="l-lvl">0</div>
+                                        <div class="l-unit">級</div>
+                                        <div class="l-sep">（</div>
+                                        <div class="l-spd">&lt; 0.3</div>
+                                        <div class="l-unit">m/s）</div>
+
+                                        <div class="l-head">一般風況</div>
+
+                                        <div class="l-icon"><i style="background: #92efd9; border: 1px solid #333;"></i></div>
+                                        <div class="l-lvl">1</div>
+                                        <div class="l-unit">級</div>
+                                        <div class="l-sep">（</div>
+                                        <div class="l-spd">0.3-1.5</div>
+                                        <div class="l-unit">m/s）</div>
+
+                                        <div class="l-icon"><i style="background: #00a5e1; border: 1px solid #333;"></i></div>
+                                        <div class="l-lvl">2-3</div>
+                                        <div class="l-unit">級</div>
+                                        <div class="l-sep">（</div>
+                                        <div class="l-spd">1.6-5.4</div>
+                                        <div class="l-unit">m/s）</div>
+
+                                        <div class="l-icon"><i style="background: #1b467a; border: 1px solid #333;"></i></div>
+                                        <div class="l-lvl">4-5</div>
+                                        <div class="l-unit">級</div>
+                                        <div class="l-sep">（</div>
+                                        <div class="l-spd">5.5-10.7</div>
+                                        <div class="l-unit">m/s）</div>
+
+                                        <div class="l-head l-warn">強風警示</div>
+
+                                        <div class="l-icon"><i style="background: #fec44f; border: 1px solid #333;"></i></div>
+                                        <div class="l-lvl">6-7</div>
+                                        <div class="l-unit">級</div>
+                                        <div class="l-sep">（</div>
+                                        <div class="l-spd">10.8-17.1</div>
+                                        <div class="l-unit">m/s）</div>
+
+                                        <div class="l-icon"><i style="background: #e31a1c; border: 1px solid #333;"></i></div>
+                                        <div class="l-lvl">8-9</div>
+                                        <div class="l-unit">級</div>
+                                        <div class="l-sep">（</div>
+                                        <div class="l-spd">17.2-24.4</div>
+                                        <div class="l-unit">m/s）</div>
+
+                                        <div class="l-icon"><i style="background: #99000d; border: 1px solid #333;"></i></div>
+                                        <div class="l-lvl">10+</div>
+                                        <div class="l-unit">級</div>
+                                        <div class="l-sep">（</div>
+                                        <div class="l-spd">≥ 24.5</div>
+                                        <div class="l-unit">m/s）</div>
+                                    </div>
+                                </div>
+                                <div class="legend-section stats-map-no-data">
+                                    <i style="color: red; font-weight: bold; background: none; width: auto; text-align: center;">&#10006;</i> 無資料 / 離線
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="stats-card card-gusts">
                     <h4>最強陣風排行 (Max Gust Leaderboard)</h4>
                     <div class="table-wrapper">
@@ -182,7 +254,7 @@
                                     <th>陣風 (m/s)</th>
                                 </tr>
                             </thead>
-                            <tbody>3
+                            <tbody>
                                 <!-- Dynamic Content -->
                             </tbody>
                         </table>
