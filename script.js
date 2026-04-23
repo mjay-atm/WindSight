@@ -1018,6 +1018,292 @@ window.closeStatsModal = function() {
     document.getElementById('stats-modal').style.display = 'none';
 };
 
+async function waitForStatsMapStableRender() {
+    if (!statsMap) return;
+
+    // Force a non-animated redraw at current camera so all panes share the same transform.
+    statsMap.stop();
+    const center = statsMap.getCenter();
+    const zoom = statsMap.getZoom();
+    statsMap.invalidateSize({ pan: false, animate: false });
+
+    await new Promise(resolve => {
+        statsMap.once('moveend', resolve);
+        statsMap.setView(center, zoom, { animate: false, reset: true });
+    });
+
+    // Give SVG/marker panes an extra paint cycle before html2canvas snapshot.
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+function createSvgElement(tagName, attrs = {}) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tagName);
+    Object.keys(attrs).forEach(key => {
+        el.setAttribute(key, attrs[key]);
+    });
+    return el;
+}
+
+function getGeometryOuterRings(geometry) {
+    if (!geometry) return [];
+
+    if (geometry.type === 'Polygon') {
+        return geometry.coordinates?.[0] ? [geometry.coordinates[0]] : [];
+    }
+
+    if (geometry.type === 'MultiPolygon') {
+        return (geometry.coordinates || []).map(poly => poly?.[0]).filter(Boolean);
+    }
+
+    return [];
+}
+
+function ringToPathData(ring) {
+    if (!statsMap || !Array.isArray(ring) || ring.length < 2) return '';
+
+    const points = [];
+    ring.forEach(coord => {
+        const lng = parseFloat(coord?.[0]);
+        const lat = parseFloat(coord?.[1]);
+        if (isNaN(lng) || isNaN(lat)) return;
+        const p = statsMap.latLngToContainerPoint([lat, lng]);
+        points.push(p);
+    });
+
+    if (points.length < 2) return '';
+
+    return points
+        .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+        .join(' ') + ' Z';
+}
+
+function buildStatsMapExportOverlay() {
+    if (!statsMap) return null;
+
+    const mapContainer = statsMap.getContainer();
+    const size = statsMap.getSize();
+    if (!mapContainer || !size || size.x <= 0 || size.y <= 0) return null;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'stats-map-export-overlay';
+    overlay.style.position = 'absolute';
+    overlay.style.inset = '0';
+    overlay.style.zIndex = '450';
+    overlay.style.pointerEvents = 'none';
+
+    const svg = createSvgElement('svg', {
+        width: String(size.x),
+        height: String(size.y),
+        viewBox: `0 0 ${size.x} ${size.y}`
+    });
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.display = 'block';
+    overlay.appendChild(svg);
+
+    const appendRingPaths = (geometry, attrs) => {
+        getGeometryOuterRings(geometry).forEach(ring => {
+            const d = ringToPathData(ring);
+            if (!d) return;
+            svg.appendChild(createSvgElement('path', {
+                d,
+                ...attrs
+            }));
+        });
+    };
+
+    if (taoyuanTownGeoJson?.features?.length) {
+        taoyuanTownGeoJson.features.forEach(feature => {
+            appendRingPaths(feature.geometry, {
+                fill: 'none',
+                stroke: '#666',
+                'stroke-width': '1',
+                'stroke-dasharray': '5 5',
+                'stroke-linejoin': 'round',
+                'stroke-linecap': 'round'
+            });
+        });
+    }
+
+    if (taoyuanBoundaryFeature) {
+        appendRingPaths(taoyuanBoundaryFeature.geometry, {
+            fill: 'none',
+            stroke: '#000',
+            'stroke-width': '3',
+            'stroke-linejoin': 'round',
+            'stroke-linecap': 'round'
+        });
+    }
+
+    const stationAverages = latestStats?.stationAverages || {};
+    Object.keys(stationMarkers).forEach(stationID => {
+        const sourceMarker = stationMarkers[stationID];
+        const station = sourceMarker?.stationData;
+        if (!station) return;
+
+        const lat = parseFloat(station.Latitude);
+        const lng = parseFloat(station.Longitude);
+        if (isNaN(lat) || isNaN(lng)) return;
+
+        const point = statsMap.latLngToContainerPoint([lat, lng]);
+        const stationAverage = stationAverages[stationID] || null;
+        const speed = parseFloat(stationAverage?.avgSpeed);
+        const direction = parseFloat(stationAverage?.avgDirection);
+
+        if (!isNaN(speed) && !isNaN(direction) && direction >= 0 && direction <= 360) {
+            if (speed <= 0.2) {
+                svg.appendChild(createSvgElement('circle', {
+                    cx: point.x.toFixed(2),
+                    cy: point.y.toFixed(2),
+                    r: '6',
+                    fill: '#fff',
+                    stroke: '#000',
+                    'stroke-width': '4'
+                }));
+                return;
+            }
+
+            const g = createSvgElement('g', {
+                transform: `translate(${point.x.toFixed(2)} ${point.y.toFixed(2)}) rotate(${(direction + 180).toFixed(2)})`
+            });
+            g.appendChild(createSvgElement('path', {
+                d: 'M 0 -12 L -7 9 L 0 5 L 7 9 Z',
+                fill: getWindColor(speed),
+                stroke: '#fff',
+                'stroke-width': '2',
+                'stroke-linejoin': 'round'
+            }));
+            svg.appendChild(g);
+            return;
+        }
+
+        const noData = createSvgElement('g', {
+            transform: `translate(${point.x.toFixed(2)} ${point.y.toFixed(2)})`
+        });
+        noData.appendChild(createSvgElement('line', {
+            x1: '-6',
+            y1: '-6',
+            x2: '6',
+            y2: '6',
+            stroke: '#d00',
+            'stroke-width': '3',
+            'stroke-linecap': 'round'
+        }));
+        noData.appendChild(createSvgElement('line', {
+            x1: '-6',
+            y1: '6',
+            x2: '6',
+            y2: '-6',
+            stroke: '#d00',
+            'stroke-width': '3',
+            'stroke-linecap': 'round'
+        }));
+        svg.appendChild(noData);
+    });
+
+    mapContainer.appendChild(overlay);
+    return overlay;
+}
+
+window.downloadStatsMapPng = async function() {
+    ensureStatsMap();
+
+    if (!statsMap) {
+        alert('地圖尚未初始化，請稍後再試。');
+        return;
+    }
+
+    if (typeof html2canvas !== 'function') {
+        alert('下載功能尚未載入完成，請稍後再試。');
+        return;
+    }
+
+    const downloadBtn = document.getElementById('download-map-btn');
+    const mapFrame = document.querySelector('.stats-map-frame');
+    if (!mapFrame) {
+        alert('找不到地圖區塊，無法下載。');
+        return;
+    }
+
+    const zoomSlider = mapFrame.querySelector('.stats-map-zoom-slider');
+    const zoomControl = statsMap.getContainer().querySelector('.leaflet-control-zoom');
+    const hiddenElements = [zoomSlider, zoomControl].filter(Boolean);
+    const originalVisibility = hiddenElements.map(el => el.style.visibility);
+    const leafletDomNodes = Array.from(statsMap.getContainer().querySelectorAll('.leaflet-pane, .leaflet-control-container'));
+    const originalLeafletVisibility = leafletDomNodes.map(el => el.style.visibility);
+
+    let exportOverlay = null;
+
+    const startDate = document.getElementById('stats-start-date')?.value || 'unknown-start';
+    const endDate = document.getElementById('stats-end-date')?.value || 'unknown-end';
+    const fileName = `taoyuan_station_avg_wind_map_${startDate}_to_${endDate}.png`;
+
+    try {
+        if (downloadBtn) {
+            downloadBtn.disabled = true;
+            downloadBtn.textContent = '產生圖片中...';
+        }
+
+        hiddenElements.forEach(el => {
+            el.style.visibility = 'hidden';
+        });
+
+        await waitForStatsMapStableRender();
+
+        exportOverlay = buildStatsMapExportOverlay();
+        if (exportOverlay) {
+            leafletDomNodes.forEach(el => {
+                el.style.visibility = 'hidden';
+            });
+            await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+
+        const canvas = await html2canvas(mapFrame, {
+            backgroundColor: '#ffffff',
+            // scale: Math.min(2, window.devicePixelRatio || 1),
+            scale: 3,
+            useCORS: true,
+            logging: false
+        });
+
+        canvas.toBlob(blob => {
+            if (!blob) {
+                alert('產生圖片失敗，請再試一次。');
+                return;
+            }
+
+            const downloadUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(downloadUrl);
+        }, 'image/png');
+    } catch (error) {
+        console.error('downloadStatsMapPng failed:', error);
+        alert('下載圖片失敗，請稍後重試。');
+    } finally {
+        hiddenElements.forEach((el, idx) => {
+            el.style.visibility = originalVisibility[idx] || '';
+        });
+
+        leafletDomNodes.forEach((el, idx) => {
+            el.style.visibility = originalLeafletVisibility[idx] || '';
+        });
+
+        if (exportOverlay && exportOverlay.parentNode) {
+            exportOverlay.parentNode.removeChild(exportOverlay);
+        }
+
+        if (downloadBtn) {
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = '下載圖片 (PNG)';
+        }
+    }
+};
+
 function syncStatsMapZoomSlider(zoomLevel) {
     if (!statsMapZoomSlider) return;
     statsMapZoomSlider.value = Number(zoomLevel).toFixed(2);
@@ -1031,6 +1317,9 @@ function ensureStatsMap() {
     statsMap = L.map('stats-map', {
         zoomControl: true,
         attributionControl: false,
+        zoomAnimation: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false,
         zoomSnap: STATS_MAP_ZOOM_STEP,
         zoomDelta: 0.25,
         wheelPxPerZoomLevel: 90,

@@ -479,6 +479,19 @@ body { margin: 0; padding: 0; }
 }
 .action-btn:hover { background: #005a7f; }
 
+.action-btn.action-btn-secondary {
+    background: #2f6f8f;
+}
+
+.action-btn.action-btn-secondary:hover {
+    background: #24586f;
+}
+
+.action-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
 .stats-progress { margin-bottom: 15px; }
 .stats-status-text { font-size: 0.9rem; color: #666; margin-top: 5px; }
 

@@ -10,6 +10,8 @@
     <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
     <!-- Add Chart.js for charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Add html2canvas for PNG export -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="style.css?v=20260205-4" />
 </head>
 <body>
@@ -152,6 +154,7 @@
                 <label>開始日期: <input type="date" id="stats-start-date"></label>
                 <label>結束日期: <input type="date" id="stats-end-date"></label>
                 <button class="action-btn" onclick="calculateStats()">開始計算</button>
+                <button id="download-map-btn" class="action-btn action-btn-secondary" onclick="downloadStatsMapPng()">下載圖片 (PNG)</button>
             </div>
             <div id="stats-progress" class="stats-progress" style="display: none;">
                 <div class="progress-bar"><div id="stats-progress-fill" class="progress-fill"></div></div>
@@ -290,6 +293,6 @@
             </div>
         </div>
     </div>
-    <script src="script.js?v=20260205-4"></script>
+    <script src="script.js?v=20260205-6"></script>
 </body>
 </html>
